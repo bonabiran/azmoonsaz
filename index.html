@@ -437,6 +437,14 @@ async function fetchPublicExam(testId){
 }
 async function initCloud(){
  try{
+   const adminSession=await adminSupabase.auth.getSession();
+   if(adminSession.data?.session?.user && !adminSession.data.session.user.is_anonymous && String(adminSession.data.session.user.email||'').toLowerCase()===ADMIN_EMAIL.toLowerCase()){
+     adminUser=adminSession.data.session.user;adminAuthed=true;authUser=adminUser;
+     const ok=await loadRemote();
+     applyTheme();applyBranding();renderHome();renderResults();
+     if(ok)toast('اتصال امن به Supabase برقرار شد.'); else toast('اتصال به Supabase برقرار نشد؛ تنظیمات را بررسی کن.');
+     booting=false;return;
+   }
    await ensureParticipantAuth();
    const ok=await loadRemote();
    applyTheme();applyBranding();renderHome();renderResults();
@@ -446,6 +454,13 @@ async function initCloud(){
  booting=false;
 }function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.remove('hidden');clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.classList.add('hidden'),2600);}
+
+document.addEventListener('keydown',e=>{
+ if(e.ctrlKey&&e.shiftKey&&((e.key||'').toLowerCase()==='q'||e.keyCode===81)){
+  e.preventDefault();
+  if(adminAuthed) showView('admin'); else adminLogin();
+ }
+});
 
 function showView(id){
  if(id==='admin'&&!adminAuthed){adminLogin();return;}
@@ -603,9 +618,9 @@ async function startAttempt(e,testId){
    });
    if(error)throw error;
    const row=data;
-   const {data:answers,error:ansErr}=await participantSupabase.from('attempt_answers').select('*').eq('attempt_id',row.id);
+   const {data:answers,error:ansErr}=await participantSupabase.rpc('get_my_attempt_answers',{p_attempt_id:row.id});
    if(ansErr)throw ansErr;
-   const a=fromAttemptRow(row,{},Object.fromEntries((answers||[]).map(x=>[x.question_id,x.answer])));
+   const a=fromAttemptRow(row,{},answers||{});
    a.testId=testId;a.order=Array.isArray(row.question_order)?row.question_order:((t?.questionIds)||[]);
    db.attempts=[a,...db.attempts.filter(x=>x.id!==a.id)];
    currentAttempt=a;cacheDB();closeModal();runExam(a.id);
@@ -702,7 +717,7 @@ function showResult(aid){
 
 async function adminLogin(){
  if(booting){toast('در حال آماده‌سازی Supabase...');return;}
- openModal(`<h2>ورود به پنل مدیریت</h2><p class="muted">ورود با حساب مدیر سایت انجام می‌شود.</p><form id="adminForm"><div class="field"><label>ایمیل مدیر</label><input name="email" type="email" required autocomplete="username" value="${esc(ADMIN_EMAIL)}"></div><div class="field" style="margin-top:12px"><label>رمز عبور</label><input name="p" type="password" required autocomplete="current-password"></div><button class="btn primary" style="margin-top:18px">ورود</button></form>`);
+ openModal(`<h2>ورود به پنل مدیریت</h2><p class="muted">ورود با حساب مدیر سایت انجام می‌شود.</p><form id="adminForm"><div class="field"><label>ایمیل مدیر</label><input name="email" type="email" required autocomplete="username" value=""></div><div class="field" style="margin-top:12px"><label>رمز عبور</label><input name="p" type="password" required autocomplete="current-password"></div><button class="btn primary" style="margin-top:18px">ورود</button></form>`);
  document.getElementById('adminForm').addEventListener('submit',async e=>{
    e.preventDefault();const f=new FormData(e.target);const email=String(f.get('email')||'').trim().toLowerCase();const password=String(f.get('p')||'');
    if(email!==ADMIN_EMAIL.toLowerCase()){toast('این ایمیل مدیر مجاز نیست.');return;}
